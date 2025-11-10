@@ -1,4 +1,5 @@
 interface FSItem {
+    url: any;
     id: string;
     uid: string;
     name: string;
