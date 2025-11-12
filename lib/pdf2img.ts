@@ -5,29 +5,29 @@ export interface PdfConversionResult {
 }
 
 let pdfjsLib: any = null;
-let isLoading = false;
 let loadPromise: Promise<any> | null = null;
 
 async function loadPdfJs(): Promise<any> {
     if (pdfjsLib) return pdfjsLib;
     if (loadPromise) return loadPromise;
 
-    isLoading = true;
-    // @ts-expect-error - pdfjs-dist/build/pdf.mjs is not a module
-    loadPromise = import("pdfjs-dist/build/pdf.mjs").then((lib) => {
-        // Set the worker source to use local file
-        lib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+    // Load both the core library and its matching worker dynamically
+    loadPromise = (async () => {
+        // @ts-ignore
+        const lib = await import("pdfjs-dist/build/pdf.mjs");
+
+        // Dynamically load matching worker from the same package version
+        const workerSrc = (await import("pdfjs-dist/build/pdf.worker.mjs?url")).default;
+        lib.GlobalWorkerOptions.workerSrc = workerSrc;
+
         pdfjsLib = lib;
-        isLoading = false;
         return lib;
-    });
+    })();
 
     return loadPromise;
 }
 
-export async function convertPdfToImage(
-    file: File
-): Promise<PdfConversionResult> {
+export async function convertPdfToImage(file: File): Promise<PdfConversionResult> {
     try {
         const lib = await loadPdfJs();
 
@@ -53,7 +53,6 @@ export async function convertPdfToImage(
             canvas.toBlob(
                 (blob) => {
                     if (blob) {
-                        // Create a File from the blob with the same name as the pdf
                         const originalName = file.name.replace(/\.pdf$/i, "");
                         const imageFile = new File([blob], `${originalName}.png`, {
                             type: "image/png",
@@ -73,9 +72,10 @@ export async function convertPdfToImage(
                 },
                 "image/png",
                 1.0
-            ); // Set quality to maximum (1.0)
+            );
         });
     } catch (err) {
+        console.error("PDF-to-image conversion failed:", err);
         return {
             imageUrl: "",
             file: null,
@@ -83,3 +83,6 @@ export async function convertPdfToImage(
         };
     }
 }
+
+
+

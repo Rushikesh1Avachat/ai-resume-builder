@@ -1,21 +1,19 @@
-
 import {type FormEvent, useState} from 'react'
 import Navbar from "~/components/Navbar";
 import FileUploader from "~/components/FileUploader";
 
 import {useNavigate} from "react-router";
 
-// NOTE: Assuming these imports are available in your environment
 import {prepareInstructions} from "../../constants";
 import {usePuterStore} from "../../lib/puter";
 import {convertPdfToImage} from "../../lib/pdf2img";
 import {generateUUID} from "../../lib/utils";
-
+export const meta = () => ([
+    { title: 'Resumind | Review ' },
+    { name: 'description', content: 'Upload resume by AI Feedback' },
+])
 const Upload = () => {
-    // FIX: Using the actual hook call with the requested generic type for compatibility.
-    //@ts-ignore
-    const { auth, isLoading, fs, ai, kv } = usePuterStore<any>();
-
+    const { auth, isLoading, fs, ai, kv } = usePuterStore();
     const navigate = useNavigate();
     const [isProcessing, setIsProcessing] = useState(false);
     const [statusText, setStatusText] = useState('');
@@ -27,39 +25,21 @@ const Upload = () => {
 
     const handleAnalyze = async ({ companyName, jobTitle, jobDescription, file }: { companyName: string, jobTitle: string, jobDescription: string, file: File  }) => {
         setIsProcessing(true);
-        setStatusText(''); // Clear previous status
 
-        const handleError = (message: string) => {
-            setStatusText(message);
-            setIsProcessing(false); // CRITICAL: Stop processing on failure
-            return;
-        };
-
-        // 1. Upload the file
         setStatusText('Uploading the file...');
+        // @ts-ignore
         const uploadedFile = await fs.upload([file]);
-        if(!uploadedFile) return handleError('Error: Failed to upload file');
+        if(!uploadedFile) return setStatusText('Error: Failed to upload file');
 
-        // 2. Convert to image
-        setStatusText('Converting to image (Bypassed for testing)...');
+        setStatusText('Converting to image...');
+        const imageFile = await convertPdfToImage(file);
+        if(!imageFile.file) return setStatusText('Error: Failed to convert PDF to image');
 
-        // --- TEMPORARY BYPASS START ---
-        // REPLACE THIS BLOCK:
-        // const imageFile = await convertPdfToImage(file);
-        // if(!imageFile.file) return handleError('Error: Failed to convert PDF to image. Please check your file.');
-
-        // WITH THIS MOCK:
-        const mockImageFile = new File([], "mock-image.png", { type: 'image/png' });
-        const imageFile = { file: mockImageFile };
-        // --- TEMPORARY BYPASS END ---
-
-        // 3. Upload the image
         setStatusText('Uploading the image...');
-        // Use the original file path for the image upload (since we bypassed the conversion)
+        // @ts-ignore
         const uploadedImage = await fs.upload([imageFile.file]);
-        if(!uploadedImage) return handleError('Error: Failed to upload image');
+        if(!uploadedImage) return setStatusText('Error: Failed to upload image');
 
-        // 4. Prepare data
         setStatusText('Preparing data...');
         const uuid = generateUUID();
         const data = {
@@ -69,10 +49,8 @@ const Upload = () => {
             companyName, jobTitle, jobDescription,
             feedback: '',
         }
-        console.log('Initial Data for KV:', data);
         await kv.set(`resume:${uuid}`, JSON.stringify(data));
 
-        // 5. Analyze the resume
         setStatusText('Analyzing...');
 
         const feedback = await ai.feedback(
@@ -80,27 +58,16 @@ const Upload = () => {
             //@ts-ignore
             prepareInstructions({ jobTitle, jobDescription })
         )
-        if (!feedback) return handleError('Error: Failed to analyze resume');
+        if (!feedback) return setStatusText('Error: Failed to analyze resume');
 
         const feedbackText = typeof feedback.message.content === 'string'
             ? feedback.message.content
             : feedback.message.content[0].text;
 
-        // 6. Parse Feedback and store
-        try {
-            data.feedback = JSON.parse(feedbackText);
-        } catch (e) {
-            console.error("AI Feedback was not valid JSON:", feedbackText, e);
-            return handleError('Error: Analysis returned unreadable feedback structure.');
-        }
-
+        data.feedback = JSON.parse(feedbackText);
         await kv.set(`resume:${uuid}`, JSON.stringify(data));
-
-        // 7. Success and Redirect
         setStatusText('Analysis complete, redirecting...');
-        console.log("Analysis complete, redirecting...") // Log the success message
-
-        setIsProcessing(false) // Stop processing just before navigation
+        console.log(data);
         navigate(`/resume/${uuid}`);
     }
 
@@ -114,7 +81,7 @@ const Upload = () => {
         const jobTitle = formData.get('job-title') as string;
         const jobDescription = formData.get('job-description') as string;
 
-        if(!file) return setStatusText('Please select a resume file.');
+        if(!file) return;
 
         handleAnalyze({ companyName, jobTitle, jobDescription, file });
     }
@@ -129,7 +96,6 @@ const Upload = () => {
                     {isProcessing ? (
                         <>
                             <h2>{statusText}</h2>
-                            {/* NOTE: Ensure /images/resume-scan.gif exists in your public folder */}
                             <img src="/images/resume-scan.gif" className="w-full" />
                         </>
                     ) : (
@@ -139,15 +105,15 @@ const Upload = () => {
                         <form id="upload-form" onSubmit={handleSubmit} className="flex flex-col gap-4 mt-8">
                             <div className="form-div">
                                 <label htmlFor="company-name">Company Name</label>
-                                <input type="text" name="company-name" placeholder="Company Name" id="company-name" required />
+                                <input type="text" name="company-name" placeholder="Company Name" id="company-name" />
                             </div>
                             <div className="form-div">
                                 <label htmlFor="job-title">Job Title</label>
-                                <input type="text" name="job-title" placeholder="Job Title" id="job-title" required />
+                                <input type="text" name="job-title" placeholder="Job Title" id="job-title" />
                             </div>
                             <div className="form-div">
                                 <label htmlFor="job-description">Job Description</label>
-                                <textarea rows={5} name="job-description" placeholder="Job Description" id="job-description" required />
+                                <textarea rows={5} name="job-description" placeholder="Job Description" id="job-description" />
                             </div>
 
                             <div className="form-div">
@@ -166,3 +132,6 @@ const Upload = () => {
     )
 }
 export default Upload
+
+
+

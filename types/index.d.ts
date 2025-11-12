@@ -4,7 +4,8 @@ interface Resume {
     jobTitle?: string;
     imagePath: string;
     resumePath: string;
-    feedback: Feedback;
+    jobDescription?:string
+    feedback: Feedback
 }
 
 interface Feedback {
